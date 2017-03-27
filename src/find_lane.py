@@ -48,59 +48,17 @@ def corners_unwarp(img, nx, ny, mtx, dist):
         # For source points I'm grabbing the outer four detected corners
         src = np.float32([corners[0], corners[nx-1], corners[-1], corners[-nx]])
         # For destination points, I'm arbitrarily choosing some points to be
-        # a nice fit for displaying our warped result 
+        # a nice fit for displaying our warped result
         # again, not exact, but close enough for our purposes
-        dst = np.float32([[offset, offset], [img_size[0]-offset, offset], 
-                                     [img_size[0]-offset, img_size[1]-offset], 
-                                     [offset, img_size[1]-offset]])
+        dst = np.float32([[offset, offset], [img_size[0]-offset, offset],
+                          [img_size[0]-offset, img_size[1]-offset],
+                          [offset, img_size[1]-offset]])
         # Given src and dst points, calculate the perspective transform matrix
         M = cv2.getPerspectiveTransform(src, dst)
         # Warp the image using OpenCV warpPerspective()
         warped = cv2.warpPerspective(undist, M, img_size)
 
     # Return the resulting image and matrix
-    return warped, M
-
-def corners_unwarp(img, nx, ny, mtx, dist):
-    # Pass in your image into this function
-    # Write code to do the following steps
-    # 1) Undistort using mtx and dist
-    dst = cv2.undistort(img, mtx, dist, None, mtx)
-    # 2) Convert to grayscale
-    gray = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
-    # 3) Find the chessboard corners
-    ret, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
-    # 4) If corners found:
-    if ret:
-        # a) draw corners
-        cv2.drawChessboardCorners(gray, (nx, ny), corners, ret)
-        # b) define 4 source points src = np.float32([[,],[,],[,],[,]])
-             #Note: you could pick any four of the detected corners
-             # as long as those four corners define a rectangle
-             #One especially smart way to do this would be to use four well-chosen
-             # corners that were automatically detected during the undistortion steps
-             #We recommend using the automatic detection of corners in your code
-        src = np.float32([
-            corners[0].reshape(-1),
-            corners[nx-1].reshape(-1),
-            corners[-nx].reshape(-1),
-            corners[-1].reshape(-1),
-            ])
-        # c) define 4 destination points dst = np.float32([[,],[,],[,],[,]])
-        dst = np.float32([
-            [100, 100],
-            [img.shape[1]-100, 100],
-            [100, img.shape[0]-100],
-            [img.shape[1]-100, img.shape[0]-100]
-            ])
-        # d) use cv2.getPerspectiveTransform() to get M, the transform matrix
-        M = cv2.getPerspectiveTransform(src, dst)
-        # e) use cv2.warpPerspective() to warp your image to a top-down view
-        image_size = (img.shape[1], img.shape[0])
-        warped = cv2.warpPerspective(gray, M, image_size)
-    else:
-        M = None
-        warped = np.copy(img)
     return warped, M
 
 def abs_sobel_thresh(img, orient='x', thresh=(0, 255)):
@@ -462,7 +420,7 @@ class ImageProcessor:
 
         return failed
 
-    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg'):
+    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg', plot=False):
         failed = False
         if self.camera_mtx is None or self.dist_coeffs is None:
             failed = self.load_calibration_data(cal_data_file)
@@ -474,16 +432,18 @@ class ImageProcessor:
             for name in glob.glob(path):
                 logger.debug('processing image: %s', name)
                 img = mpimg.imread(name)
-                processed = self.pipeline(img)
-                f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
-                f.tight_layout()
-                ax1.imshow(img)
-                ax1.set_title('Original Image', fontsize=50)
-                ax2.imshow(processed)
-                ax2.set_title('Undistorted Image', fontsize=50)
-                plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
-                plt.show()
+                warped, binary, undist = self.pipeline(img)
 
+                if plot:
+                    ftitle, fext = os.path.splitext(os.path.basename(name))
+                    path = self.out_img_dir + '/' + ftitle + '_warped'+ fext
+                    mpimg.imsave(path, warped)
+                    path = self.out_img_dir + '/' + ftitle + '_binary'+ fext
+                    mpimg.imsave(path, binary)
+                    path = self.out_img_dir + '/' + ftitle + '_undist'+ fext
+                    mpimg.imsave(path, undist)
+
+                self.find_line_with_sliding_window(warped)
 
     def pipeline(self, img):
         undist = cv2.undistort(img,
@@ -492,23 +452,17 @@ class ImageProcessor:
                                None,
                                self.camera_mtx)
 
-        hls = cv2.cvtColor(undist, cv2.COLOR_RGB2HLS).astype(np.float)
-        h_channel = hls[:,:,0]
-        l_channel = hls[:,:,1]
-        s_channel = hls[:,:,2]
-        # Sobel x
 
-        sxbinary = abs_sobel_thresh(s_channel, thresh=(20, 100))
+        # Sobel x
+        gray = cv2.cvtColor(undist, cv2.COLOR_RGB2GRAY).astype(np.float)
+        sxbinary = abs_sobel_thresh(gray, thresh=(30, 255))
 
         # Threshold color channel
+        hls = cv2.cvtColor(undist, cv2.COLOR_RGB2HLS).astype(np.float)
+        s_channel = hls[:, :, 2]
         s_binary = channel_thresh(s_channel, (170, 255))
 
-        dir_binary = dir_thresh(s_channel, thresh=(np.pi/4, np.pi/3))
-        h_binary = channel_thresh(h_channel, (20,30))
-        # Stack each channel
-        # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
-        # be beneficial to replace this channel with something else.
-        color_binary = np.dstack((h_binary, channel_or(sxbinary, s_binary), np.zeros_like(s_binary)))
+        combined_binary = channel_or(sxbinary, s_binary)
         img_size = img.shape[0:2]
         img_size = img_size[::-1]
 
@@ -524,23 +478,120 @@ class ImageProcessor:
              [(img_size[0] * 3 / 4), 0]])
 
         mtx = cv2.getPerspectiveTransform(src, dst)
-        warped = cv2.warpPerspective(color_binary, mtx, (img.shape[1], img.shape[0]))
-        return warped
+        warped = cv2.warpPerspective(combined_binary, mtx, (img.shape[1], img.shape[0]))
 
+        return warped, combined_binary, undist
+
+    def find_line_with_sliding_window(self, binary_warped, brind_search=True):
+        if brind_search:
+            # Assuming you have created a warped binary image called "binary_warped"
+            # Take a histogram of the bottom half of the image
+            histogram = np.sum(binary_warped[int(binary_warped.shape[0]/2):, :], axis=0)
+            # Create an output image to draw on and  visualize the result
+            out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
+            # Find the peak of the left and right halves of the histogram
+            # These will be the starting point for the left and right lines
+            midpoint = np.int(histogram.shape[0]/2)
+            leftx_base = np.argmax(histogram[:midpoint])
+            rightx_base = np.argmax(histogram[midpoint:]) + midpoint
+
+            # Choose the number of sliding windows
+            nwindows = 9
+            # Set height of windows
+            window_height = np.int(binary_warped.shape[0]/nwindows)
+            # Identify the x and y positions of all nonzero pixels in the image
+            # Current positions to be updated for each window
+            leftx_current = leftx_base
+            rightx_current = rightx_base
+
+        nonzero = binary_warped.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+        # Set the width of the windows +/- margin
+        margin = 100
+        # Set minimum number of pixels found to recenter window
+        minpix = 50
+        # Create empty lists to receive left and right lane pixel indices
+        left_lane_inds = []
+        right_lane_inds = []
+
+        # Step through the windows one by one
+        for window in range(nwindows):
+            # Identify window boundaries in x and y (and right and left)
+            win_y_low = binary_warped.shape[0] - (window + 1) * window_height
+            win_y_high = binary_warped.shape[0] - window * window_height
+            win_xleft_low = leftx_current - margin
+            win_xleft_high = leftx_current + margin
+            win_xright_low = rightx_current - margin
+            win_xright_high = rightx_current + margin
+
+            # Draw the windows on the visualization image
+            cv2.rectangle(out_img,
+                          (win_xleft_low, win_y_low),
+                          (win_xleft_high, win_y_high),
+                          (0, 255, 0),
+                          2)
+            cv2.rectangle(out_img,
+                          (win_xright_low, win_y_low),
+                          (win_xright_high, win_y_high),
+                          (0,255,0),
+                          2)
+            # Identify the nonzero pixels in x and y within the window
+            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+            # Append these indices to the lists
+            left_lane_inds.append(good_left_inds)
+            right_lane_inds.append(good_right_inds)
+            # If you found > minpix pixels, recenter next window on their mean position
+            if len(good_left_inds) > minpix:
+                leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+            if len(good_right_inds) > minpix:
+                rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+
+        # Concatenate the arrays of indices
+        left_lane_inds = np.concatenate(left_lane_inds)
+        right_lane_inds = np.concatenate(right_lane_inds)
+
+        # Extract left and right line pixel positions
+        leftx = nonzerox[left_lane_inds]
+        lefty = nonzeroy[left_lane_inds]
+        rightx = nonzerox[right_lane_inds]
+        righty = nonzeroy[right_lane_inds]
+
+        # Fit a second order polynomial to each
+        left_fit = np.polyfit(lefty, leftx, 2)
+        right_fit = np.polyfit(righty, rightx, 2)
+
+        # Generate x and y values for plotting
+        ploty = np.linspace(0, binary_warped.shape[0]-1, binary_warped.shape[0] )
+        left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+        right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+
+        out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+        out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+        plt.imshow(out_img)
+        plt.plot(left_fitx, ploty, color='yellow')
+        plt.plot(right_fitx, ploty, color='yellow')
+        plt.xlim(0, 1280)
+        plt.ylim(720, 0)
+        plt.show()
 
 def main():
-    opts, _ = getopt.getopt(sys.argv[1:], 'f', [])
+    opts, _ = getopt.getopt(sys.argv[1:], 'fp', [])
     force = False
+    plot = False
     for opt, _ in opts:
         if opt == '-f':
             force = True
+        if opt == '-p':
+            plot = True
 
-    processor = ImageProcessor('../data', '../camera_cal', '../test_images', 'output_images')
+    processor = ImageProcessor('../data', '../camera_cal', '../test_images', '../output_images')
     if force is True:
         processor.calibrate()
         processor.undistort()
 
-    processor.process_test_imgs()
+    processor.process_test_imgs(plot=plot)
     '''
     camera_data_file = '../data/camera.p'
     if force or not os.path.exists('../data/camera.p'):
