@@ -94,12 +94,10 @@ Then I fit my lane lines with a 2nd order polynomial using all the points detect
 
 ![alt text][image9]
 
-Next, I calculated the radius of curvature of the lins. I used Bourne's method as descrived in his website " 
+Next, I calculated the radius of curvature of the lins. I used Bourne's method as descrived in his website "
 Interactive Mathematics"[[1](#bourne)]. I did this in [lines 598 through 600](./src/find_lane.py#L598-L600) and [lines 411 through 416](./src/find_lane.py#L411-L416) in my code in `find_lane.py`
 
-### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
-
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+Finally, I plotted back down onto the road such that the lane area is identified clearly. I implemented this step in [lines 632 through 653](./src/find_lane.py#L632-L653) in my code in `find_lane.py`.  Here is an example of my result on a test image:
 
 ![alt text][image10]
 
@@ -107,9 +105,7 @@ I implemented this step in lines # through # in my code in `yet_another_file.py`
 
 ## Pipeline (video)
 
-####1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
-
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result on YouTube](https://youtu.be/WROS2aRtOn4).
 
 ---
 
@@ -122,4 +118,4 @@ Here I'll talk about the approach I took, what techniques I used, what worked an
 ## Reference
 
 - <a name="bourne">[1]
-  Bourne, Murray. "Radius of Curvature." Interactive Mathematics. N.p., n.d. Web. 01 Apr. 2017.
+  Bourne, Murray. "[Radius of Curvature](http://www.intmath.com/applications-differentiation/8-radius-curvature.php)." Interactive Mathematics. N.p., n.d. Web. 01 Apr. 2017.
