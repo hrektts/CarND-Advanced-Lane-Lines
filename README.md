@@ -86,7 +86,7 @@ Then I used a histogram to look for the left and right lanes.  I used a horizont
 
 For my beginning of the search, I divided the image into two images vertically, and set the point that has highest value as my starting point in each image.  This step appears in [lines 503 through 513](./src/find_lane.py#L503-L513) of the file called `find_lane.py`.
 
-Next, I divided the image into 12 sections horizontally, such that I found lines in each section using different settings.  In the first section, that located at the top of the image, I set rectangular area which center has the same x value as the starting point calcurated above.  The mean of the position of the whole pixel inside the rectangular was set as new starting point for the next section.  Then I applied this process to all the sections.  These steps appear in [lines 515 through 566](./src/find_lane.py#L515-L566) of the file called `find_lane.py`.  Here is the schematic of the rectangles:
+Next, I divided the image into 12 sections horizontally, such that I found lines in each section using different settings.  In the first section, that located at the top of the image, I set rectangular area which center has the same x value as the starting point calculated above.  The mean of the position of the whole pixel inside the rectangular was set as new starting point for the next section.  Then I applied this process to all the sections.  These steps appear in [lines 515 through 566](./src/find_lane.py#L515-L566) of the file called `find_lane.py`.  Here is the schematic of the rectangles:
 
 ![alt text][image8]
 
@@ -94,10 +94,8 @@ Then I fit my lane lines with a 2nd order polynomial using all the points detect
 
 ![alt text][image9]
 
-
-### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
-
-I did this in lines # through # in my code in `my_other_file.py`
+Next, I calculated the radius of curvature of the lins. I used Bourne's method as descrived in his website " 
+Interactive Mathematics"[[1](#bourne)]. I did this in [lines 598 through 600](./src/find_lane.py#L598-L600) and [lines 411 through 416](./src/find_lane.py#L411-L416) in my code in `find_lane.py`
 
 ### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
@@ -120,3 +118,8 @@ Here's a [link to my video result](./project_video.mp4)
 ### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
 Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.
+
+## Reference
+
+- <a name="bourne">[1]
+  Bourne, Murray. "Radius of Curvature." Interactive Mathematics. N.p., n.d. Web. 01 Apr. 2017.
