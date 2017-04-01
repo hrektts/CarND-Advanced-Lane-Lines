@@ -1,107 +1,660 @@
-# Advanced Lane Finding Project
+#!/usr/bin/env python
+""" Advanced Lane Finding Project
+"""
 
-The goals / steps of this project are the following:
+import logging
+import getopt
+import glob
+import os
+import pickle
+import sys
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import numpy as np
+import cv2
+from moviepy.editor import VideoFileClip
 
-* Compute the camera calibration matrix and distortion coefficients given a set of chessboard images.
-* Apply a distortion correction to raw images.
-* Use color transforms, gradients, etc., to create a thresholded binary image.
-* Apply a perspective transform to rectify binary image ("birds-eye view").
-* Detect lane pixels and fit to find the lane boundary.
-* Determine the curvature of the lane and vehicle position with respect to center.
-* Warp the detected lane boundaries back onto the original image.
-* Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter('%(module)s: %(funcName)s: %(message)s'))
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
 
-[//]: # (Image References)
+def abs_sobel_thresh(img, orient='x', thresh=(0, 255)):
+    """ Applies Sobel operator and threshold to an image.
 
-[image1]: ./camera_cal/calibration2.jpg "Original"
-[image2]: ./output_images/calibration2.jpg "Undistorted"
-[image3]: ./output_images/test1_undist.jpg "Road Transformed"
-[image4]: ./examples/binary_combo_example.jpg "Binary Example"
-[image5]: ./examples/warped_straight_lines.jpg "Warp Example"
-[image6]: ./examples/color_fit_lines.jpg "Fit Visual"
-[image7]: ./examples/example_output.jpg "Output"
-[video1]: ./project_video.mp4 "Video"
+    Args:
+        img: A single channel image to be processed.
+        orient: The direction used to calculate the derivative. Takes 'x' or 'y'.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
+
+    Returns:
+        A processed binary image.
+
+    """
+    # Applies x or y gradient and take the absolute value
+    if orient == 'x':
+        abs_sobel = np.absolute(cv2.Sobel(img, cv2.CV_64F, 1, 0))
+    if orient == 'y':
+        abs_sobel = np.absolute(cv2.Sobel(img, cv2.CV_64F, 0, 1))
+    # Scale to 8-bit (0 - 255) and convert to type = np.uint8
+    scaled_sobel = np.uint8(255 * abs_sobel / np.max(abs_sobel))
+    # Create a copy and apply the threshold
+    binary_output = np.zeros_like(scaled_sobel)
+    binary_output[(scaled_sobel >= thresh[0]) & (scaled_sobel <= thresh[1])] = 1
+    return binary_output
+
+def mag_thresh(img, sobel_kernel=3, thresh=(0, 255)):
+    """ Calculates gradient magnitude of an image and applies threshold.
+
+    Args:
+        img: A single channel image to be processed.
+        sobel_kernel: The kernel size used by Sobel operator.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
+
+    Returns:
+        A processed binary image.
+
+    """
+    # Take the gradient in x and y separately
+    sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    # Calculate the magnitude
+    gradmag = np.sqrt(sobelx**2 + sobely**2)
+    # Scale to 8-bit (0 - 255) and convert to type = np.uint8
+    gradmag = np.uint8(255 * gradmag / np.max(gradmag))
+    # Create a binary mask where mag thresholds are met
+    binary_output = np.zeros_like(gradmag)
+    binary_output[(gradmag >= thresh[0]) & (gradmag <= thresh[1])] = 1
+    return binary_output
+
+def dir_thresh(img, sobel_kernel=3, thresh=(0, np.pi/2)):
+    """ Thresholds an image for a given range and Sobel kernel
+
+    Args:
+        img: A single channel image to be processed.
+        sobel_kernel: The kernel size used by Sobel operator.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
+
+    Returns:
+        A processed binary image.
+
+    """
+    # Takes the gradient in x and y separately
+    sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+    # Calculates the direction of the gradient
+    absgrad = np.arctan2(np.absolute(sobely), np.absolute(sobelx))
+    # Creates a binary mask where direction thresholds are met
+    binary_output = np.zeros_like(absgrad)
+    binary_output[(absgrad >= thresh[0]) & (absgrad <= thresh[1])] = 1
+
+    return binary_output
+
+def channel_thresh(img, thresh=(0, 255)):
+    """ Calculates gradient magnitude of an image and applies threshold.
+
+    Args:
+        img: A single channel image to be processed.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
+
+    Returns:
+        A processed binary image.
+
+    """
+    # Create a binary mask where mag thresholds are met
+    binary_output = np.zeros_like(img)
+    binary_output[(img >= thresh[0]) & (img <= thresh[1])] = 1
+    return binary_output
+
+class ImageProcessor:
+    """ A image processor
+    """
+    def __init__(self, data_dir, cal_img_dir, test_img_dir, out_img_dir):
+        """ The initializer
+
+        Args:
+            data_dir: A directory used to load and save parameters.
+            cal_img_dir: A directory where calibration images are read from.
+            test_img_dir: A directory where test images are read from.
+            out_img_dir: A directory where processed images are written.
+
+        """
+        self.data_dir = data_dir
+        if not os.path.exists(data_dir):
+            os.mkdir(data_dir)
+
+        self.cal_img_dir = cal_img_dir
+        if not os.path.exists(cal_img_dir):
+            os.mkdir(cal_img_dir)
+
+        self.test_img_dir = test_img_dir
+        if not os.path.exists(test_img_dir):
+            os.mkdir(test_img_dir)
+
+        self.out_img_dir = out_img_dir
+        if not os.path.exists(out_img_dir):
+            os.mkdir(out_img_dir)
+
+        self.cal_data_file = None
+        self.img_shape = None
+        self.cal_img_names = None
+        self.camera_mtx = None
+        self.dist_coeffs = None
+        self.invmtx = None
+
+    def read_cal_img_name(self, ext='jpg'):
+        """ Reads all image names in the calibration image directory.
+
+        Args:
+            ext: The extention of the images
+
+        """
+        path = self.cal_img_dir + '/*.' + ext
+        self.cal_img_names = []
+        for name in glob.glob(path):
+            self.cal_img_names.append(name)
+
+    def read_cal_img_shape(self):
+        """ Reads the shape of images.
+        """
+        logger.debug('chack the size of calibration images')
+
+        if self.cal_img_names is None:
+            self.read_cal_img_name()
+
+        shapes = {}
+        for name in self.cal_img_names:
+            img = cv2.imread(name)
+            if img.shape in shapes:
+                shapes[img.shape] += 1
+            else:
+                shapes[img.shape] = 1
+
+        self.img_shape = max(shapes, key=lambda k: shapes[k])
+
+    def calibrate(self, pattern_size=(9, 6), cal_data_file='camera.p'):
+        """ Calibrates camera using chessboard images.
+
+        Args:
+            pattern_size: The number of crossing points of chessboard image.
+                          (x-direction, y-direction)
+            cal_data_file: A file name used to store calibration data.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        logger.debug('starts camera calibration')
+
+        if self.cal_img_names is None:
+            self.read_cal_img_name()
+
+        if self.img_shape is None:
+            self.read_cal_img_shape()
+
+        objpoint = np.zeros((np.prod(pattern_size), 3), np.float32)
+        objpoint[:, :2] = np.indices(pattern_size).T.reshape(-1, 2)
+
+        objpoints = []
+        imgpoints = []
+        for name in self.cal_img_names:
+            img = cv2.imread(name)
+            if self.img_shape != img.shape:
+                logger.debug('detects different image size: %s', img.shape)
+                continue
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            found, corners = cv2.findChessboardCorners(gray, pattern_size, None)
+            if not found:
+                logger.debug('could not detect point(s) in %s', name)
+                continue
+
+            objpoints.append(objpoint)
+            imgpoints.append(corners.reshape(-1, 2))
+
+        ret, mtx, dist, _, _ = cv2.calibrateCamera(objpoints,
+                                                   imgpoints,
+                                                   self.img_shape[0:2],
+                                                   None,
+                                                   None)
+        if ret:
+            self.camera_mtx = mtx
+            self.dist_coeffs = dist
+
+            self.cal_data_file = self.data_dir + '/' + cal_data_file
+            camera = {'cameraMatrix': mtx, 'distCoeffs': dist}
+            with open(self.cal_data_file, mode='wb') as f:
+                pickle.dump(camera, f)
+                return False
+        else:
+            logger.debug('calibration failed')
+            return True
+
+        return True
+
+    def load_calibration_data(self, cal_data_file='camera.p'):
+        """ Loads camera calibration data
+
+        Args:
+            cal_data_file: A file name used to read calibration data.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        if cal_data_file == 'camera.p':
+            path = self.data_dir + '/' + cal_data_file
+        else:
+            path = cal_data_file
+
+        if not os.path.exists(path):
+            logger.debug('calibration data not found')
+            return True
+
+        with open(path, mode='rb') as f:
+            camera_data = pickle.load(f)
+            self.camera_mtx = camera_data['cameraMatrix']
+            self.dist_coeffs = camera_data['distCoeffs']
+            return False
+
+        return True
+
+    def undistort(self):
+        """ Undistorts read images and writes them to files.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        logger.debug('undistort images used in camera calibration')
+
+        if self.cal_img_names is None:
+            self.read_cal_img_name()
+
+        failed = False
+        if self.camera_mtx is None or self.dist_coeffs is None:
+            failed = self.load_calibration_data()
+            if failed:
+                failed = self.calibrate()
+
+        if not failed:
+            for name in self.cal_img_names:
+                img = cv2.imread(name)
+                undist = cv2.undistort(img,
+                                       self.camera_mtx,
+                                       self.dist_coeffs,
+                                       None,
+                                       self.camera_mtx)
+
+                img_name = self.out_img_dir + '/' + os.path.basename(name)
+                cv2.imwrite(img_name, undist)
+
+        return failed
+
+    def check_calibration(self, cal_data_file='camera.p'):
+        """ Checks whether the camera calibration has done successfully.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        return self.has_calibrated() \
+            or self.load_calibration_data(cal_data_file) \
+            and self.calibrate()
+
+    def has_calibrated(self):
+        """ Checks whether the camera calibration has done or not.
+
+        Returns:
+            Not yet (False) or Done (True)
+
+        """
+        return self.camera_mtx is not None and self.dist_coeffs is not None
+
+    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg'):
+        """ TODO: Add docstring
+        """
+        failed = self.check_calibration(cal_data_file)
+
+        if not failed:
+            path = self.test_img_dir + '/*' + ext
+            for name in glob.glob(path):
+                logger.debug('processing image: %s', name)
+                img = mpimg.imread(name)
+                warped, binary, undist = self.do_pre_processing(img)
+
+                ftitle, fext = os.path.splitext(os.path.basename(name))
+                path = self.out_img_dir + '/' + ftitle + '_warped'+ fext
+                mpimg.imsave(path, warped)
+                path = self.out_img_dir + '/' + ftitle + '_binary'+ fext
+                mpimg.imsave(path, binary)
+                path = self.out_img_dir + '/' + ftitle + '_undist'+ fext
+                mpimg.imsave(path, undist)
+
+    def do_pre_processing(self, img):
+        """ TODO: Add docstring
+        """
+        undist = cv2.undistort(img,
+                               self.camera_mtx,
+                               self.dist_coeffs,
+                               None,
+                               self.camera_mtx)
+
+        # Sobel x
+        gray = cv2.cvtColor(undist, cv2.COLOR_RGB2GRAY).astype(np.float)
+        sxbinary = abs_sobel_thresh(gray, thresh=(30, 255)).astype(np.float)
+
+        # Threshold color channel
+        hls = cv2.cvtColor(undist, cv2.COLOR_RGB2HLS).astype(np.float)
+        s_channel = hls[:, :, 2]
+        s_binary = channel_thresh(s_channel, (100, 255)).astype(np.float)
+
+        h_channel = hls[:, :, 0]
+        yellow_binary = channel_thresh(h_channel, (15, 35)).astype(np.float)
+
+        combined_binary = cv2.bitwise_and(sxbinary, yellow_binary)
+        combined_binary = cv2.bitwise_or(combined_binary, s_binary)
+        combined_binary = cv2.bitwise_or(combined_binary, sxbinary)
+        img_size = img.shape[0:2]
+        img_size = img_size[::-1]
+
+        src = np.float32(
+            [[img_size[0] / 2 - img_size[0] * 0.048, img_size[1] / 2 + img_size[1] * 0.14],
+             [img_size[0] / 2 - img_size[0] * 0.28, img_size[1] - 50],
+             [img_size[0] / 2 + img_size[0] * 0.31, img_size[1] - 50],
+             [img_size[0] / 2 + img_size[0] * 0.053, img_size[1] / 2 + img_size[1] * 0.14]])
+        dst = np.float32(
+            [[(img_size[0] / 4), 0],
+             [(img_size[0] / 4), img_size[1]],
+             [(img_size[0] * 3 / 4), img_size[1]],
+             [(img_size[0] * 3 / 4), 0]])
+
+        mtx = cv2.getPerspectiveTransform(src, dst)
+        self.invmtx = cv2.getPerspectiveTransform(dst, src)
+        warped = cv2.warpPerspective(combined_binary, mtx, (img.shape[1], img.shape[0]))
+
+        return warped, combined_binary, undist
+
+class Line:
+    """ Line data used by LineDetector
+    """
+    def __init__(self, xm_per_pix=1, ym_per_pix=1):
+        """ TODO: Add docstring
+        """
+        # was the line detected in the last iteration?
+        self.detected = False
+        # x values of the last n fits of the line
+        self.recent_xfitted = []
+
+        self.recent_x = []
+        self.recent_y = []
+        # average x values of the fitted line over the last n iterations
+        self.bestx = None
+        # polynomial coefficients averaged over the last n iterations
+        self.best_fit = None
+        self.best_fit_for_radius = None
+        # polynomial coefficients for the most recent fit
+        self.current_fit = [np.array([False])]
+        # radius of curvature of the line in some units
+        self.radius_of_curvature = None
+        # distance in meters of vehicle center from the line
+        self.line_base_pos = None
+        # difference in fit coefficients between last and new fits
+        self.diffs = np.array([0, 0, 0], dtype='float')
+        # x values for detected line pixels
+        self.allx = None
+        # y values for detected line pixels
+        self.ally = None
+
+        self.xm_per_pix = xm_per_pix
+        self.ym_per_pix = ym_per_pix
+
+    def calc_current_x(self, y):
+        """ TODO: Add docstring
+        """
+        return self.current_fit[0]*y**2 + self.current_fit[1]*y + self.current_fit[2]
+
+    def calc_average_x(self, y):
+        """ TODO: Add docstring
+        """
+        return self.best_fit[0]*y**2 + self.best_fit[1]*y + self.best_fit[2]
+
+    def calc_radius(self, y, ym_per_pix=1):
+        """ TODO: Add docstring
+        """
+        return ((1 + (2*self.best_fit_for_radius[0]*y*self.ym_per_pix
+                      + self.best_fit_for_radius[1])**2)**1.5) \
+                      / np.absolute(2*self.best_fit_for_radius[0])
+
+    def update(self, current_x, current_y):
+        if len(self.recent_x) > 5:
+            self.recent_x.pop(0)
+        self.recent_x.append(current_x)
+
+        if len(self.recent_y) > 5:
+            self.recent_y.pop(0)
+        self.recent_y.append(current_y)
+
+        all_x = [num for elem in self.recent_x for num in elem]
+        all_y = [num for elem in self.recent_y for num in elem]
+
+        self.best_fit = np.polyfit(all_y, all_x, 2)
+
+        if self.xm_per_pix == 1 and self.ym_per_pix == 1:
+            self.best_fit_for_radius = self.best_fit
+        else:
+            self.best_fit_for_radius \
+                = np.polyfit(all_y*self.ym_per_pix, all_x*self.xm_per_pix, 2)
+
+class LineDetector(ImageProcessor):
+    """ A line detector
+    """
+    def __init__(self, data_dir, cal_img_dir, test_img_dir, out_img_dir):
+        """ The initializer
+
+        Args:
+            data_dir: A directory used to load and save parameters.
+            cal_img_dir: A directory where calibration images are read from.
+            test_img_dir: A directory where test images are read from.
+            out_img_dir: A directory where processed images are written.
+
+        """
+        super(LineDetector, self).__init__(data_dir, cal_img_dir, test_img_dir, out_img_dir)
+        self.left_line = Line()
+        self.right_line = Line()
+
+        self.calibrated = False
+        self.initial_search = True
+
+    def find_line(self, img):
+        """ TODO: Add docstring
+        """
+        if self.calibrated is False:
+            self.check_calibration()
+            self.calibrated = True
+
+        binary_warped, _, undist = self.do_pre_processing(img)
+        # Create an output image to draw on and  visualize the result
+        out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
+        window_img = np.zeros_like(out_img)
+
+        nonzeroy, nonzerox = binary_warped.nonzero()
+        # Set the width of the windows +/- margin
+        margin = 100
+        # Set minimum number of pixels found to recenter window
+        minpix = 50
+
+        if self.initial_search:
+            # Assuming you have created a warped binary image called "binary_warped"
+            # Take a histogram of the bottom half of the image
+            histogram = np.sum(binary_warped[int(binary_warped.shape[0]/2):, :], axis=0)
+            # Find the peak of the left and right halves of the histogram
+            # These will be the starting point for the left and right lines
+            midpoint = np.int(histogram.shape[0]/2)
+            leftx_current = np.argmax(histogram[:midpoint])
+            rightx_current = np.argmax(histogram[midpoint:]) + midpoint
+
+            # Choose the number of sliding windows
+            nwindows = 9
+            # Set height of windows
+            window_height = np.int(binary_warped.shape[0]/nwindows)
+
+            # Create empty lists to receive left and right lane pixel indices
+            left_lane_inds = []
+            right_lane_inds = []
+
+            # Step through the windows one by one
+            for window in range(nwindows):
+                # Identify window boundaries in x and y (and right and left)
+                win_y_low = binary_warped.shape[0] - (window + 1) * window_height
+                win_y_high = binary_warped.shape[0] - window * window_height
+                win_xleft_low = leftx_current - margin
+                win_xleft_high = leftx_current + margin
+                win_xright_low = rightx_current - margin
+                win_xright_high = rightx_current + margin
+
+                # Draw the windows on the visualization image
+                '''
+                cv2.rectangle(out_img,
+                              (win_xleft_low, win_y_low),
+                              (win_xleft_high, win_y_high),
+                              (0, 255, 0),
+                              2)
+                cv2.rectangle(out_img,
+                              (win_xright_low, win_y_low),
+                              (win_xright_high, win_y_high),
+                              (0, 255, 0),
+                              2)
+                '''
+                # Identify the nonzero pixels in x and y within the window
+                good_left_inds = ((nonzeroy >= win_y_low)
+                                  & (nonzeroy < win_y_high)
+                                  & (nonzerox >= win_xleft_low)
+                                  & (nonzerox < win_xleft_high)).nonzero()[0]
+                good_right_inds = ((nonzeroy >= win_y_low)
+                                   & (nonzeroy < win_y_high)
+                                   & (nonzerox >= win_xright_low)
+                                   & (nonzerox < win_xright_high)).nonzero()[0]
+                # Append these indices to the lists
+                left_lane_inds.append(good_left_inds)
+                right_lane_inds.append(good_right_inds)
+                # If you found > minpix pixels, recenter next window on their mean position
+                if len(good_left_inds) > minpix:
+                    leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+                if len(good_right_inds) > minpix:
+                    rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+
+            # Concatenate the arrays of indices
+            left_lane_inds = np.concatenate(left_lane_inds)
+            right_lane_inds = np.concatenate(right_lane_inds)
+
+            self.initial_search = False
+
+        else:
+            left_lane_inds = ((nonzerox > (self.left_line.calc_average_x(nonzeroy) - margin))
+                              & (nonzerox < (self.left_line.calc_average_x(nonzeroy) + margin)))
+            right_lane_inds = ((nonzerox > (self.right_line.calc_average_x(nonzeroy) - margin))
+                              & (nonzerox < (self.right_line.calc_average_x(nonzeroy) + margin)))
+
+        # Extract left and right line pixel positions
+        leftx = nonzerox[left_lane_inds]
+        lefty = nonzeroy[left_lane_inds]
+        rightx = nonzerox[right_lane_inds]
+        righty = nonzeroy[right_lane_inds]
+        self.left_line.update(leftx, lefty)
+        self.right_line.update(rightx, righty)
+
+        # Fit a second order polynomial to each
+        #self.left_line.current_fit = np.polyfit(lefty, leftx, 2)
+        #self.right_line.current_fit = np.polyfit(righty, rightx, 2)
+
+        # Generate x and y values for plotting
+        ploty = np.linspace(0, binary_warped.shape[0]-1, binary_warped.shape[0])
+        left_fitx = self.left_line.calc_average_x(ploty)
+        right_fitx = self.right_line.calc_average_x(ploty)
+        radius = self.left_line.calc_radius(np.max(ploty))
+
+        warp_zero = np.zeros_like(binary_warped).astype(np.uint8)
+        color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
+
+        # Warp the blank back to original image space using inverse perspective matrix (Minv)
+        newwarp = cv2.warpPerspective(color_warp, self.invmtx, (img.shape[1], img.shape[0]))
+
+        result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
+
+        '''
+        out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+        out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+
+        # Generate a polygon to illustrate the search window area
+        # And recast the x and y points into usable format for cv2.fillPoly()
+        left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, ploty]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(
+            np.vstack([left_fitx+margin, ploty])))])
+        left_line_pts = np.hstack((left_line_window1, left_line_window2))
+        right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, ploty]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(
+            np.vstack([right_fitx+margin, ploty])))])
+        right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
 
-## Camera Calibration
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
+        cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
+        #cv2.putText(window_img, str(radius), (100, 100), cv2.FONT_HERSHEY_COMPLEX, 3, (255, 255, 255))
+        result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
+        '''
+        '''
+        plt.imshow(result)
+        #plt.plot(left_fitx, ploty, color='yellow')
+        #plt.plot(right_fitx, ploty, color='yellow')
+        plt.xlim(0, 1280)
+        plt.ylim(720, 0)
+        plt.show()
+        '''
+        return result
 
-The code for my camera calibrationthis is in a function called `calibrate()`, which appears in [lines 177 through 234](./src/find_lane.py#L177-L234) of the file called `find_lane.py`, and an another function called `undistort()`, which appears in [lines 263 through 293](./src/find_lane.py#L263-L293) of the same file.
+def main():
+    opts, _ = getopt.getopt(sys.argv[1:], 'fp', [])
+    force = False
+    plot = False
+    for opt, _ in opts:
+        if opt == '-f':
+            force = True
+        if opt == '-p':
+            plot = True
 
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objpoint` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.
+    detector = LineDetector('../data',
+                            '../camera_cal',
+                            '../test_images',
+                            '../output_images')
+    if force:
+        detector.calibrate()
+        detector.undistort()
 
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result:
+    if plot:
+        detector.process_test_imgs()
 
-| Original image     | Corrected image    |
-|:------------------:|:------------------:|
-|![alt text][image1] |![alt text][image2] |
+    ## for a video
+    #clip = VideoFileClip('../project_video.mp4')
+    #output = '../output_images/project_video.mp4'
 
-## Pipeline (single images)
+    clip = VideoFileClip('../challenge_video.mp4')
+    output = '../output_images/challenge_video.mp4'
 
-To demonstrate this step, I will describe how I apply the image processing to one of the test images like this one:
-![alt text][image3]
+    #clip = VideoFileClip('../harder_challenge_video.mp4')
+    #output = '../output_images/harder_challenge_video.mp4'
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+    clip.fl_image(detector.find_line).write_videofile(output, audio=False)
 
-![alt text][image4]
-
-### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
-
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
-
-```
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
-
-```
-This resulted in the following source and destination points:
-
-| Source        | Destination   |
-|:-------------:|:-------------:|
-| 585, 460      | 320, 0        |
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
-
-I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
-
-![alt text][image4]
-
-### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
-
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
-
-![alt text][image5]
-
-### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
-
-I did this in lines # through # in my code in `my_other_file.py`
-
-### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
-
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
-
-![alt text][image6]
-
----
-
-## Pipeline (video)
-
-####1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
-
-Here's a [link to my video result](./project_video.mp4)
-
----
-
-## Discussion
-
-### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.
+if __name__ == '__main__':
+    main()
