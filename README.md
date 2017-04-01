@@ -16,7 +16,7 @@ The goals / steps of this project are the following:
 [image1]: ./camera_cal/calibration2.jpg "Original"
 [image2]: ./output_images/calibration2.jpg "Undistorted"
 [image3]: ./output_images/test1_undist.jpg "Road Transformed"
-[image4]: ./examples/binary_combo_example.jpg "Binary Example"
+[image4]: ./output_images/test1_binary.jpg "Binary Example"
 [image5]: ./examples/warped_straight_lines.jpg "Warp Example"
 [image6]: ./examples/color_fit_lines.jpg "Fit Visual"
 [image7]: ./examples/example_output.jpg "Output"
@@ -27,7 +27,7 @@ The goals / steps of this project are the following:
 
 The code for my camera calibrationthis is in a function called `calibrate()`, which appears in [lines 177 through 234](./src/find_lane.py#L177-L234) of the file called `find_lane.py`, and an another function called `undistort()`, which appears in [lines 263 through 293](./src/find_lane.py#L263-L293) of the same file.
 
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objpoint` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.
+I started by preparing "object points", which was the (x, y, z) coordinates of the chessboard corners in the world. Here I assumed the chessboard was fixed on the (x, y) plane at z=0, such that the object points were the same for each calibration image.  Thus, `objpoint` was just a replicated array of coordinates, and `objpoints` was appended with a copy of it every time I successfully detected all chessboard corners in a test image.  `imgpoints` was appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.
 
 I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result:
 
@@ -38,11 +38,15 @@ I then used the output `objpoints` and `imgpoints` to compute the camera calibra
 ## Pipeline (single images)
 
 To demonstrate this step, I will describe how I apply the image processing to one of the test images like this one:
+
 ![alt text][image3]
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+I used a combination of gradient and color thresholds to generate a binary image (thresholding steps at [lines 347 through 361](./src/find_lane.py#L347-L361) in `find_lane.py`).  Here's an example of my output for this step.
 
 ![alt text][image4]
+
+The gradient threshold was applied for a gradient image that was applied Sobel operator following conversion to grayscale, in order to find edges in vertical direction. The color thresholds were applied to the hue and the saturation channel of the image that was converted HLS color space in advance. The first thresholds was effective because the hue of the lines was different from its surroundings and the second one was also effective because the saturation of the lines was relatively higher than its surroundings.
+
 
 ### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
