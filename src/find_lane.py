@@ -299,8 +299,8 @@ class ImageProcessor:
             Succeeded (False) or Failed (True)
 
         """
-        return self.has_calibrated() \
-            or self.load_calibration_data(cal_data_file) \
+        return not self.has_calibrated() \
+            and self.load_calibration_data(cal_data_file) \
             and self.calibrate()
 
     def has_calibrated(self):
@@ -459,7 +459,31 @@ class LineDetector(ImageProcessor):
         self.calibrated = False
         self.initial_search = True
 
-    def find_line(self, img):
+    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg'):
+        """ TODO: Add docstring
+        """
+        #super(LineDetector, self).process_test_imgs(cal_data_file, ext)
+
+        failed = self.check_calibration(cal_data_file)
+
+        if not failed:
+            path = self.test_img_dir + '/*' + ext
+            for name in glob.glob(path):
+                logger.debug('processing image: %s', name)
+
+                img = mpimg.imread(name)
+                self.initial_search = True
+                for i in range(10):
+                    result, lined = self.find_line(img, test=True)
+
+                ftitle, fext = os.path.splitext(os.path.basename(name))
+
+                path = self.out_img_dir + '/' + ftitle + '_result'+ fext
+                mpimg.imsave(path, result)
+                path = self.out_img_dir + '/' + ftitle + '_lined'+ fext
+                mpimg.imsave(path, lined)
+
+    def find_line(self, img, test=False):
         """ TODO: Add docstring
         """
         if self.calibrated is False:
@@ -477,6 +501,11 @@ class LineDetector(ImageProcessor):
         if self.initial_search:
             # Take a histogram of the bottom half of the image
             histogram = np.sum(binary_warped[int(binary_warped.shape[0]/2):, :], axis=0)
+            #plt.plot(histogram)
+            #plt.xlabel('Pixel Position', fontsize=12)
+            #plt.ylabel('Counts', fontsize=12)
+            #plt.show()
+
             # Find the peak of the left and right halves of the histogram
             # These will be the starting point for the left and right lines
             midpoint = np.int(histogram.shape[0]/2)
@@ -564,6 +593,36 @@ class LineDetector(ImageProcessor):
         self.left_line.calc_radius(np.max(ploty))
         self.right_line.calc_radius(np.max(ploty))
 
+        if test:
+            # Create an image to draw on and an image to show the selection window
+            out_img = np.dstack((binary_warped, binary_warped, binary_warped)).astype(np.uint8)
+
+            window_img = np.zeros_like(out_img).astype(np.uint8)
+            line_img = np.zeros_like(out_img).astype(np.uint8)
+            # Color in left and right line pixels
+            out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+            out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
+
+            # Generate a polygon to illustrate the search window area
+            # And recast the x and y points into usable format for cv2.fillPoly()
+            left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, ploty]))])
+            left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_fitx+margin, ploty])))])
+            left_line_pts = np.hstack((left_line_window1, left_line_window2))
+            right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, ploty]))])
+            right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fitx+margin, ploty])))])
+            right_line_pts = np.hstack((right_line_window1, right_line_window2))
+
+            pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+            pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+
+            # Draw the lane onto the warped blank image
+            cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
+            cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
+            cv2.polylines(line_img, np.int32(pts_left), False, (255, 255, 0), 2)
+            cv2.polylines(line_img, np.int32(pts_right), False, (255, 255, 0), 2)
+            lined = cv2.addWeighted(out_img, 1, line_img, 1, 0)
+            lined = cv2.addWeighted(lined, 1, window_img, 0.3, 0)
+
         warp_zero = np.zeros_like(binary_warped).astype(np.uint8)
         color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
 
@@ -587,7 +646,10 @@ class LineDetector(ImageProcessor):
                     % self.right_line.radius_of_curvature,
                     (30, 80), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
-        return result
+        if test:
+            return result, lined
+        else:
+            return result
 
 
 def main():

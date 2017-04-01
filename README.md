@@ -19,8 +19,9 @@ The goals / steps of this project are the following:
 [image4]: ./output_images/test1_binary.jpg "Binary Example"
 [image5]: ./output_images/test1_src.jpg "Source points"
 [image6]: ./output_images/test1_dst.jpg "Destination points"
-[image7]: ./output_images/test1_lined.jpg "Identified line"
-[image8]: ./output_images/test1_result.jpg "Result"
+[image7]: ./output_images/histogram.png "Histogram"
+[image8]: ./output_images/test1_lined.jpg "Identified line"
+[image9]: ./output_images/test1_result.jpg "Result"
 [video1]: ./project_video.mp4 "Video"
 
 
@@ -79,9 +80,17 @@ I verified that my perspective transform was working as expected by drawing the 
 
 ### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+Then I used a histogram to look for the left and right lanes.  I used a horizontal line at the center in the vertical direction as histogram data.  The figure below shows the histogram, and the points where the value is high indicate existence of the lines.
 
 ![alt text][image7]
+
+For my beginning of the search, I divided the image into two images vertically, and set the point that has highest value as my starting point in each image. This step appears in [lines 503 through 513](./src/find_lane.py#L503-L513) of the file called `find_lane.py`.
+
+Next, I divided the image into 12 sections horizontally, so that I found 
+did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+
+![alt text][image7]
+![alt text][image8]
 
 ### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
@@ -91,7 +100,7 @@ I did this in lines # through # in my code in `my_other_file.py`
 
 I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
 
-![alt text][image8]
+![alt text][image9]
 
 ---
 
