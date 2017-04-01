@@ -532,7 +532,6 @@ class LineDetector(ImageProcessor):
                 win_xleft_high = leftx_current + margin
                 win_xright_low = rightx_current - margin
                 win_xright_high = rightx_current + margin
-                print(win_xleft_low, win_xleft_high, leftx_current, margin)
 
                 # Draw the windows on the visualization image
                 '''
