@@ -20,8 +20,9 @@ The goals / steps of this project are the following:
 [image5]: ./output_images/test1_src.jpg "Source points"
 [image6]: ./output_images/test1_dst.jpg "Destination points"
 [image7]: ./output_images/histogram.png "Histogram"
-[image8]: ./output_images/test1_lined.jpg "Identified line"
-[image9]: ./output_images/test1_result.jpg "Result"
+[image8]: ./output_images/window_search.png "Window search"
+[image9]: ./output_images/test1_lined.jpg "Identified line"
+[image10]: ./output_images/test1_result.jpg "Result"
 [video1]: ./project_video.mp4 "Video"
 
 
@@ -86,11 +87,12 @@ Then I used a histogram to look for the left and right lanes.  I used a horizont
 
 For my beginning of the search, I divided the image into two images vertically, and set the point that has highest value as my starting point in each image. This step appears in [lines 503 through 513](./src/find_lane.py#L503-L513) of the file called `find_lane.py`.
 
-Next, I divided the image into 12 sections horizontally, so that I found 
-did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+Next, I divided the image into 12 sections horizontally, such that I found lines in each section using different settings. In the first section, that located at the top of the image, I set rectangular area which center has the same x value as the starting point calcurated above. The mean of the position of the whole pixel inside the rectangular was set as new starting point for the next section. Then I applied this process to all the sections. These step appears in [lines 515 through 566](./src/find_lane.py#L515-L566) of the file called `find_lane.py`. Here is the schematic of the rectangles:
 
-![alt text][image7]
 ![alt text][image8]
+
+![alt text][image9]
+
 
 ### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
@@ -100,7 +102,7 @@ I did this in lines # through # in my code in `my_other_file.py`
 
 I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
 
-![alt text][image9]
+![alt text][image10]
 
 ---
 

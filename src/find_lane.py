@@ -521,6 +521,8 @@ class LineDetector(ImageProcessor):
             left_lane_inds = []
             right_lane_inds = []
 
+            #out_img = out_img = np.dstack((binary_warped, binary_warped, binary_warped)).astype(np.uint8)*255
+
             # Step through the windows one by one
             for window in range(nwindows):
                 # Identify window boundaries in x and y (and right and left)
@@ -530,6 +532,7 @@ class LineDetector(ImageProcessor):
                 win_xleft_high = leftx_current + margin
                 win_xright_low = rightx_current - margin
                 win_xright_high = rightx_current + margin
+                print(win_xleft_low, win_xleft_high, leftx_current, margin)
 
                 # Draw the windows on the visualization image
                 '''
@@ -561,6 +564,9 @@ class LineDetector(ImageProcessor):
                     leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
                 if len(good_right_inds) > minpix:
                     rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+
+            #plt.imshow(out_img)
+            #plt.show()
 
             # Concatenate the arrays of indices
             left_lane_inds = np.concatenate(left_lane_inds)
