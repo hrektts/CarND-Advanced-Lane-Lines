@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""Test
-
+""" Advanced Lane Finding Project
 """
 
 import logging
@@ -13,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 import cv2
+from moviepy.editor import VideoFileClip
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler()
@@ -21,55 +21,16 @@ handler.setFormatter(logging.Formatter('%(module)s: %(funcName)s: %(message)s'))
 logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 
-"""
-image = mpimg.imread('test_images/straight_lines1.jpg')
-plt.imshow(image)
-plt.show()
-"""
-
-def corners_unwarp(img, nx, ny, mtx, dist):
-    # Use the OpenCV undistort() function to remove distortion
-    undist = cv2.undistort(img, mtx, dist, None, mtx)
-    # Convert undistorted image to grayscale
-    gray = cv2.cvtColor(undist, cv2.COLOR_BGR2GRAY)
-    # Search for corners in the grayscaled image
-    ret, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
-
-    if ret:
-        # If we found corners, draw them! (just for fun)
-        cv2.drawChessboardCorners(undist, (nx, ny), corners, ret)
-        # Choose offset from image corners to plot detected corners
-        # This should be chosen to present the result at the proper aspect ratio
-        # My choice of 100 pixels is not exact, but close enough for our purpose here
-        offset = 100 # offset for dst points
-        # Grab the image shape
-        img_size = (gray.shape[1], gray.shape[0])
-
-        # For source points I'm grabbing the outer four detected corners
-        src = np.float32([corners[0], corners[nx-1], corners[-1], corners[-nx]])
-        # For destination points, I'm arbitrarily choosing some points to be
-        # a nice fit for displaying our warped result
-        # again, not exact, but close enough for our purposes
-        dst = np.float32([[offset, offset], [img_size[0]-offset, offset],
-                          [img_size[0]-offset, img_size[1]-offset],
-                          [offset, img_size[1]-offset]])
-        # Given src and dst points, calculate the perspective transform matrix
-        M = cv2.getPerspectiveTransform(src, dst)
-        # Warp the image using OpenCV warpPerspective()
-        warped = cv2.warpPerspective(undist, M, img_size)
-
-    # Return the resulting image and matrix
-    return warped, M
-
 def abs_sobel_thresh(img, orient='x', thresh=(0, 255)):
-    """
+    """ Applies Sobel operator and threshold to an image.
 
     Args:
-        img: An image to be processed
-        orient:
-        thresh:
+        img: A single channel image to be processed.
+        orient: The direction used to calculate the derivative. Takes 'x' or 'y'.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
 
     Returns:
+        A processed binary image.
 
     """
     # Applies x or y gradient and take the absolute value
@@ -85,15 +46,15 @@ def abs_sobel_thresh(img, orient='x', thresh=(0, 255)):
     return binary_output
 
 def mag_thresh(img, sobel_kernel=3, thresh=(0, 255)):
-    """Calculate gradient magnitude of an image and apply threshold
+    """ Calculates gradient magnitude of an image and applies threshold.
 
     Args:
-        img: An image to be processed
-        sobel_kernel:
-        thresh:
+        img: A single channel image to be processed.
+        sobel_kernel: The kernel size used by Sobel operator.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
 
     Returns:
-        The processed binary image
+        A processed binary image.
 
     """
     # Take the gradient in x and y separately
@@ -109,15 +70,15 @@ def mag_thresh(img, sobel_kernel=3, thresh=(0, 255)):
     return binary_output
 
 def dir_thresh(img, sobel_kernel=3, thresh=(0, np.pi/2)):
-    """A function to threshold an image for a given range and Sobel kernel
+    """ Thresholds an image for a given range and Sobel kernel
 
     Args:
-        img: An image to be processed
-        sobel_kernel:
-        thresh:
+        img: A single channel image to be processed.
+        sobel_kernel: The kernel size used by Sobel operator.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
 
     Returns:
-        The processed binary image
+        A processed binary image.
 
     """
     # Takes the gradient in x and y separately
@@ -132,15 +93,14 @@ def dir_thresh(img, sobel_kernel=3, thresh=(0, np.pi/2)):
     return binary_output
 
 def channel_thresh(img, thresh=(0, 255)):
-    """Calculate gradient magnitude of an image and apply threshold
+    """ Calculates gradient magnitude of an image and applies threshold.
 
     Args:
-        img: An image to be processed
-        sobel_kernel:
-        thresh:
+        img: A single channel image to be processed.
+        thresh: Minimum and maximum thresholds used to binalize the processed image.
 
     Returns:
-        The processed binary image
+        A processed binary image.
 
     """
     # Create a binary mask where mag thresholds are met
@@ -149,139 +109,50 @@ def channel_thresh(img, thresh=(0, 255)):
     return binary_output
 
 def channel_and(img1, img2):
+    """ Pixel-wise And operation.
+
+    Args:
+        img1: A single channel image.
+        img2: An another single channel image.
+
+    Returns:
+        A processed binary image.
+
+    """
     binary_output = np.zeros_like(img1)
     binary_output[(img1 == 1) & (img2 == 1)] = 1
 
     return binary_output
 
 def channel_or(img1, img2):
+    """ Pixel-wise Or operation.
+
+    Args:
+        img1: A single channel image.
+        img2: An another single channel image.
+
+    Returns:
+        A processed binary image.
+
+    """
     binary_output = np.zeros_like(img1)
     binary_output[(img1 == 1) | (img2 == 1)] = 1
 
     return binary_output
 
-def window_mask(width, height, img_ref, center,level):
-    output = np.zeros_like(img_ref)
-    output[int(img_ref.shape[0]-(level+1)*height):int(img_ref.shape[0]-level*height),
-           max(0, int(center-width/2)):min(int(center+width/2), img_ref.shape[1])] = 1
-    return output
-
-def find_window_centroids(image, window_width, window_height, margin):
-
-    window_centroids = [] # Store the (left,right) window centroid positions per level
-    window = np.ones(window_width) # Create our window template that we will use for convolutions
-
-    # First find the two starting positions for the left and right lane by using
-    # np.sum to get the vertical image slice
-    # and then np.convolve the vertical image slice with the window template
-
-    # Sum quarter bottom of image to get slice, could use a different ratio
-    l_sum = np.sum(image[int(3*image.shape[0]/4):, :int(image.shape[1]/2)], axis=0)
-    l_center = np.argmax(np.convolve(window, l_sum))-window_width/2
-    r_sum = np.sum(image[int(3*image.shape[0]/4):, int(image.shape[1]/2):], axis=0)
-    r_center = np.argmax(np.convolve(window, r_sum))-window_width/2+int(image.shape[1]/2)
-
-    # Add what we found for the first layer
-    window_centroids.append((l_center, r_center))
-
-    # Go through each layer looking for max pixel locations
-    for level in range(1, (int)(image.shape[0]/window_height)):
-        # convolve the window into the vertical slice of the image
-        image_layer = np.sum(image[int(image.shape[0]-(level+1)*window_height)
-                                   :int(image.shape[0]-level*window_height), :], axis=0)
-        conv_signal = np.convolve(window, image_layer)
-        # Find the best left centroid by using past left center as a reference
-        # Use window_width/2 as offset because convolution signal reference is
-        # at right side of window, not center of window
-        offset = window_width/2
-        l_min_index = int(max(l_center+offset-margin, 0))
-        l_max_index = int(min(l_center+offset+margin, image.shape[1]))
-        l_center = np.argmax(conv_signal[l_min_index:l_max_index])+l_min_index-offset
-        # Find the best right centroid by using past right center as a reference
-        r_min_index = int(max(r_center+offset-margin, 0))
-        r_max_index = int(min(r_center+offset+margin, image.shape[1]))
-        r_center = np.argmax(conv_signal[r_min_index:r_max_index])+r_min_index-offset
-        # Add what we found for that layer
-        window_centroids.append((l_center, r_center))
-
-    return window_centroids
-
-class Line():
-    def __init__(self):
-        # was the line detected in the last iteration?
-        self.detected = False
-        # x values of the last n fits of the line
-        self.recent_xfitted = []
-        #average x values of the fitted line over the last n iterations
-        self.bestx = None
-        #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None
-        #polynomial coefficients for the most recent fit
-        self.current_fit = [np.array([False])]
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0, 0, 0], dtype='float')
-        #x values for detected line pixels
-        self.allx = None
-        #y values for detected line pixels
-        self.ally = None
-
-def warper(img, src, dst):
-
-    # Compute and apply perpective transform
-    img_size = (img.shape[1], img.shape[0])
-    M = cv2.getPerspectiveTransform(src, dst)
-    warped = cv2.warpPerspective(img, M, img_size, flags=cv2.INTER_NEAREST)  # keep same size as input image
-
-    return warped
-
-def corners_unwarp(img, nx, ny, mtx, dist):
-    # Pass in your image into this function
-    # Write code to do the following steps
-    # 1) Undistort using mtx and dist
-    dst = cv2.undistort(img, mtx, dist, None, mtx)
-    # 2) Convert to grayscale
-    gray = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
-    # 3) Find the chessboard corners
-    ret, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
-    # 4) If corners found:
-    if ret == True:
-        # a) draw corners
-        cv2.drawChessboardCorners(gray, (nx, ny), corners, ret)
-        # b) define 4 source points src = np.float32([[,],[,],[,],[,]])
-             #Note: you could pick any four of the detected corners
-             # as long as those four corners define a rectangle
-             #One especially smart way to do this would be to use four well-chosen
-             # corners that were automatically detected during the undistortion steps
-             #We recommend using the automatic detection of corners in your code
-        src = np.float32([
-            corners[0].reshape(-1),
-            corners[nx-1].reshape(-1),
-            corners[-nx].reshape(-1),
-            corners[-1].reshape(-1),
-            ])
-        # c) define 4 destination points dst = np.float32([[,],[,],[,],[,]])
-        dst = np.float32([
-            [100, 100],
-            [img.shape[1]-100, 100],
-            [100, img.shape[0]-100],
-            [img.shape[1]-100, img.shape[0]-100]
-            ])
-        # d) use cv2.getPerspectiveTransform() to get M, the transform matrix
-        M = cv2.getPerspectiveTransform(src, dst)
-        # e) use cv2.warpPerspective() to warp your image to a top-down view
-        image_size = (img.shape[1], img.shape[0])
-        warped = cv2.warpPerspective(gray, M, image_size)
-    else:
-        M = None
-        warped = np.copy(img)
-    return warped, M
-
 class ImageProcessor:
+    """ A image processor
+    """
     def __init__(self, data_dir, cal_img_dir, test_img_dir, out_img_dir):
+        """ The initializer
+
+        Args:
+            data_dir: A directory used to load and save parameters.
+            cal_img_dir: A directory where calibration images are read from.
+            test_img_dir: A directory where test images are read from.
+            out_img_dir: A directory where processed images are written.
+
+        """
         self.data_dir = data_dir
         if not os.path.exists(data_dir):
             os.mkdir(data_dir)
@@ -303,14 +174,23 @@ class ImageProcessor:
         self.cal_img_names = None
         self.camera_mtx = None
         self.dist_coeffs = None
+        self.invmtx = None
 
     def read_cal_img_name(self, ext='jpg'):
+        """ Reads all image names in the calibration image directory.
+
+        Args:
+            ext: The extention of the images
+
+        """
         path = self.cal_img_dir + '/*.' + ext
         self.cal_img_names = []
         for name in glob.glob(path):
             self.cal_img_names.append(name)
 
     def read_cal_img_shape(self):
+        """ Reads the shape of images.
+        """
         logger.debug('chack the size of calibration images')
 
         if self.cal_img_names is None:
@@ -326,7 +206,18 @@ class ImageProcessor:
 
         self.img_shape = max(shapes, key=lambda k: shapes[k])
 
-    def calibrate(self, pattern_size=(9,6), cal_data_file='camera.p'):
+    def calibrate(self, pattern_size=(9, 6), cal_data_file='camera.p'):
+        """ Calibrates camera using chessboard images.
+
+        Args:
+            pattern_size: The number of crossing points of chessboard image.
+                          (x-direction, y-direction)
+            cal_data_file: A file name used to store calibration data.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
         logger.debug('starts camera calibration')
 
         if self.cal_img_names is None:
@@ -335,10 +226,8 @@ class ImageProcessor:
         if self.img_shape is None:
             self.read_cal_img_shape()
 
-        nx, ny = pattern_size
-
-        objpoint = np.zeros((np.prod((nx, ny)), 3), np.float32)
-        objpoint[:, :2] = np.indices((nx, ny)).T.reshape(-1, 2)
+        objpoint = np.zeros((np.prod(pattern_size), 3), np.float32)
+        objpoint[:, :2] = np.indices(pattern_size).T.reshape(-1, 2)
 
         objpoints = []
         imgpoints = []
@@ -348,7 +237,7 @@ class ImageProcessor:
                 logger.debug('detects different image size: %s', img.shape)
                 continue
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            found, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
+            found, corners = cv2.findChessboardCorners(gray, pattern_size, None)
             if not found:
                 logger.debug('could not detect point(s) in %s', name)
                 continue
@@ -377,7 +266,16 @@ class ImageProcessor:
         return True
 
     def load_calibration_data(self, cal_data_file='camera.p'):
-        if 'camera.p' == cal_data_file:
+        """ Loads camera calibration data
+
+        Args:
+            cal_data_file: A file name used to read calibration data.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        if cal_data_file == 'camera.p':
             path = self.data_dir + '/' + cal_data_file
         else:
             path = cal_data_file
@@ -395,6 +293,12 @@ class ImageProcessor:
         return True
 
     def undistort(self):
+        """ Undistorts read images and writes them to files.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
         logger.debug('undistort images used in camera calibration')
 
         if self.cal_img_names is None:
@@ -420,38 +324,54 @@ class ImageProcessor:
 
         return failed
 
-    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg', plot=False):
-        failed = False
-        if self.camera_mtx is None or self.dist_coeffs is None:
-            failed = self.load_calibration_data(cal_data_file)
-            if failed:
-                failed = self.calibrate()
+    def check_calibration(self, cal_data_file='camera.p'):
+        """ Checks whether the camera calibration has done successfully.
+
+        Returns:
+            Succeeded (False) or Failed (True)
+
+        """
+        return self.has_calibrated() \
+            or self.load_calibration_data(cal_data_file) \
+            and self.calibrate()
+
+    def has_calibrated(self):
+        """ Checks whether the camera calibration has done or not.
+
+        Returns:
+            Not yet (False) or Done (True)
+
+        """
+        return self.camera_mtx and self.dist_coeffs
+
+    def process_test_imgs(self, cal_data_file='camera.p', ext='jpg'):
+        """ TODO: Add docstring
+        """
+        failed = self.check_calibration(cal_data_file)
 
         if not failed:
             path = self.test_img_dir + '/*' + ext
             for name in glob.glob(path):
                 logger.debug('processing image: %s', name)
                 img = mpimg.imread(name)
-                warped, binary, undist = self.pipeline(img)
+                warped, binary, undist = self.pre_process(img)
 
-                if plot:
-                    ftitle, fext = os.path.splitext(os.path.basename(name))
-                    path = self.out_img_dir + '/' + ftitle + '_warped'+ fext
-                    mpimg.imsave(path, warped)
-                    path = self.out_img_dir + '/' + ftitle + '_binary'+ fext
-                    mpimg.imsave(path, binary)
-                    path = self.out_img_dir + '/' + ftitle + '_undist'+ fext
-                    mpimg.imsave(path, undist)
+                ftitle, fext = os.path.splitext(os.path.basename(name))
+                path = self.out_img_dir + '/' + ftitle + '_warped'+ fext
+                mpimg.imsave(path, warped)
+                path = self.out_img_dir + '/' + ftitle + '_binary'+ fext
+                mpimg.imsave(path, binary)
+                path = self.out_img_dir + '/' + ftitle + '_undist'+ fext
+                mpimg.imsave(path, undist)
 
-                self.find_line_with_sliding_window(warped)
-
-    def pipeline(self, img):
+    def pre_process(self, img):
+        """ TODO: Add docstring
+        """
         undist = cv2.undistort(img,
                                self.camera_mtx,
                                self.dist_coeffs,
                                None,
                                self.camera_mtx)
-
 
         # Sobel x
         gray = cv2.cvtColor(undist, cv2.COLOR_RGB2GRAY).astype(np.float)
@@ -478,243 +398,257 @@ class ImageProcessor:
              [(img_size[0] * 3 / 4), 0]])
 
         mtx = cv2.getPerspectiveTransform(src, dst)
+        self.invmtx = cv2.getPerspectiveTransform(dst, src)
         warped = cv2.warpPerspective(combined_binary, mtx, (img.shape[1], img.shape[0]))
 
         return warped, combined_binary, undist
 
-    def find_line_with_sliding_window(self, binary_warped, brind_search=True):
-        if brind_search:
+class Line:
+    """ Line data used by LineDetector
+    """
+    def __init__(self, xm_per_pix=1, ym_per_pix=1):
+        """ TODO: Add docstring
+        """
+        # was the line detected in the last iteration?
+        self.detected = False
+        # x values of the last n fits of the line
+        self.recent_xfitted = []
+
+        self.recent_x = []
+        self.recent_y = []
+        # average x values of the fitted line over the last n iterations
+        self.bestx = None
+        # polynomial coefficients averaged over the last n iterations
+        self.best_fit = None
+        self.best_fit_for_radius = None
+        # polynomial coefficients for the most recent fit
+        self.current_fit = [np.array([False])]
+        # radius of curvature of the line in some units
+        self.radius_of_curvature = None
+        # distance in meters of vehicle center from the line
+        self.line_base_pos = None
+        # difference in fit coefficients between last and new fits
+        self.diffs = np.array([0, 0, 0], dtype='float')
+        # x values for detected line pixels
+        self.allx = None
+        # y values for detected line pixels
+        self.ally = None
+
+        self.xm_per_pix = xm_per_pix
+        self.ym_per_pix = ym_per_pix
+
+    def calc_current_x(self, y):
+        """ TODO: Add docstring
+        """
+        return self.current_fit[0]*y**2 + self.current_fit[1]*y + self.current_fit[2]
+
+    def calc_average_x(self, y):
+        """ TODO: Add docstring
+        """
+        return self.best_fit[0]*y**2 + self.best_fit[1]*y + self.best_fit[2]
+
+    def calc_radius(self, y, ym_per_pix=1):
+        """ TODO: Add docstring
+        """
+        return ((1 + (2*self.best_fit_for_radius[0]*y*self.ym_per_pix
+                      + self.best_fit_for_radius[1])**2)**1.5) \
+                      / np.absolute(2*self.best_fit_for_radius[0])
+
+    def update(self, current_x, current_y):
+        if len(self.recent_x) > 5:
+            self.recent_x.pop(0)
+        self.recent_x.append(current_x)
+
+        if len(self.recent_y) > 5:
+            self.recent_y.pop(0)
+        self.recent_y.append(current_y)
+
+        all_x = [num for elem in self.recent_x for num in elem]
+        all_y = [num for elem in self.recent_y for num in elem]
+
+        self.best_fit = np.polyfit(all_y, all_x, 2)
+
+        if self.xm_per_pix == 1 and self.ym_per_pix == 1:
+            self.best_fit_for_radius = self.best_fit
+        else:
+            self.best_fit_for_radius \
+                = np.polyfit(all_y*self.ym_per_pix, all_x*self.xm_per_pix, 2)
+
+class LineDetector(ImageProcessor):
+    """ A line detector
+    """
+    def __init__(self, data_dir, cal_img_dir, test_img_dir, out_img_dir):
+        """ The initializer
+
+        Args:
+            data_dir: A directory used to load and save parameters.
+            cal_img_dir: A directory where calibration images are read from.
+            test_img_dir: A directory where test images are read from.
+            out_img_dir: A directory where processed images are written.
+
+        """
+        super(LineDetector, self).__init__(data_dir, cal_img_dir, test_img_dir, out_img_dir)
+        self.left_line = Line()
+        self.right_line = Line()
+
+        self.calibrated = False
+        self.initial_search = True
+
+    def find_line(self, img):
+        """ TODO: Add docstring
+        """
+        if self.calibrated is False:
+            self.check_calibration()
+            self.calibrated = True
+
+        binary_warped, _, undist = self.pre_process(img)
+        # Create an output image to draw on and  visualize the result
+        out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
+        window_img = np.zeros_like(out_img)
+
+        nonzeroy, nonzerox = binary_warped.nonzero()
+        # Set the width of the windows +/- margin
+        margin = 100
+        # Set minimum number of pixels found to recenter window
+        minpix = 50
+
+        if self.initial_search:
             # Assuming you have created a warped binary image called "binary_warped"
             # Take a histogram of the bottom half of the image
             histogram = np.sum(binary_warped[int(binary_warped.shape[0]/2):, :], axis=0)
-            # Create an output image to draw on and  visualize the result
-            out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
             # Find the peak of the left and right halves of the histogram
             # These will be the starting point for the left and right lines
             midpoint = np.int(histogram.shape[0]/2)
-            leftx_base = np.argmax(histogram[:midpoint])
-            rightx_base = np.argmax(histogram[midpoint:]) + midpoint
+            leftx_current = np.argmax(histogram[:midpoint])
+            rightx_current = np.argmax(histogram[midpoint:]) + midpoint
 
             # Choose the number of sliding windows
             nwindows = 9
             # Set height of windows
             window_height = np.int(binary_warped.shape[0]/nwindows)
-            # Identify the x and y positions of all nonzero pixels in the image
-            # Current positions to be updated for each window
-            leftx_current = leftx_base
-            rightx_current = rightx_base
 
-        nonzero = binary_warped.nonzero()
-        nonzeroy = np.array(nonzero[0])
-        nonzerox = np.array(nonzero[1])
-        # Set the width of the windows +/- margin
-        margin = 100
-        # Set minimum number of pixels found to recenter window
-        minpix = 50
-        # Create empty lists to receive left and right lane pixel indices
-        left_lane_inds = []
-        right_lane_inds = []
+            # Create empty lists to receive left and right lane pixel indices
+            left_lane_inds = []
+            right_lane_inds = []
 
-        # Step through the windows one by one
-        for window in range(nwindows):
-            # Identify window boundaries in x and y (and right and left)
-            win_y_low = binary_warped.shape[0] - (window + 1) * window_height
-            win_y_high = binary_warped.shape[0] - window * window_height
-            win_xleft_low = leftx_current - margin
-            win_xleft_high = leftx_current + margin
-            win_xright_low = rightx_current - margin
-            win_xright_high = rightx_current + margin
+            # Step through the windows one by one
+            for window in range(nwindows):
+                # Identify window boundaries in x and y (and right and left)
+                win_y_low = binary_warped.shape[0] - (window + 1) * window_height
+                win_y_high = binary_warped.shape[0] - window * window_height
+                win_xleft_low = leftx_current - margin
+                win_xleft_high = leftx_current + margin
+                win_xright_low = rightx_current - margin
+                win_xright_high = rightx_current + margin
 
-            # Draw the windows on the visualization image
-            cv2.rectangle(out_img,
-                          (win_xleft_low, win_y_low),
-                          (win_xleft_high, win_y_high),
-                          (0, 255, 0),
-                          2)
-            cv2.rectangle(out_img,
-                          (win_xright_low, win_y_low),
-                          (win_xright_high, win_y_high),
-                          (0,255,0),
-                          2)
-            # Identify the nonzero pixels in x and y within the window
-            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
-            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
-            # Append these indices to the lists
-            left_lane_inds.append(good_left_inds)
-            right_lane_inds.append(good_right_inds)
-            # If you found > minpix pixels, recenter next window on their mean position
-            if len(good_left_inds) > minpix:
-                leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
-            if len(good_right_inds) > minpix:
-                rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+                # Draw the windows on the visualization image
+                '''
+                cv2.rectangle(out_img,
+                              (win_xleft_low, win_y_low),
+                              (win_xleft_high, win_y_high),
+                              (0, 255, 0),
+                              2)
+                cv2.rectangle(out_img,
+                              (win_xright_low, win_y_low),
+                              (win_xright_high, win_y_high),
+                              (0, 255, 0),
+                              2)
+                '''
+                # Identify the nonzero pixels in x and y within the window
+                good_left_inds = ((nonzeroy >= win_y_low)
+                                  & (nonzeroy < win_y_high)
+                                  & (nonzerox >= win_xleft_low)
+                                  & (nonzerox < win_xleft_high)).nonzero()[0]
+                good_right_inds = ((nonzeroy >= win_y_low)
+                                   & (nonzeroy < win_y_high)
+                                   & (nonzerox >= win_xright_low)
+                                   & (nonzerox < win_xright_high)).nonzero()[0]
+                # Append these indices to the lists
+                left_lane_inds.append(good_left_inds)
+                right_lane_inds.append(good_right_inds)
+                # If you found > minpix pixels, recenter next window on their mean position
+                if len(good_left_inds) > minpix:
+                    leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+                if len(good_right_inds) > minpix:
+                    rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
 
-        # Concatenate the arrays of indices
-        left_lane_inds = np.concatenate(left_lane_inds)
-        right_lane_inds = np.concatenate(right_lane_inds)
+            # Concatenate the arrays of indices
+            left_lane_inds = np.concatenate(left_lane_inds)
+            right_lane_inds = np.concatenate(right_lane_inds)
+
+            self.initial_search = False
+
+        else:
+            left_lane_inds = ((nonzerox > (self.left_line.calc_average_x(nonzeroy) - margin))
+                              & (nonzerox < (self.left_line.calc_average_x(nonzeroy) + margin)))
+            right_lane_inds = ((nonzerox > (self.right_line.calc_average_x(nonzeroy) - margin))
+                              & (nonzerox < (self.right_line.calc_average_x(nonzeroy) + margin)))
 
         # Extract left and right line pixel positions
         leftx = nonzerox[left_lane_inds]
         lefty = nonzeroy[left_lane_inds]
         rightx = nonzerox[right_lane_inds]
         righty = nonzeroy[right_lane_inds]
+        self.left_line.update(leftx, lefty)
+        self.right_line.update(rightx, righty)
 
         # Fit a second order polynomial to each
-        left_fit = np.polyfit(lefty, leftx, 2)
-        right_fit = np.polyfit(righty, rightx, 2)
+        #self.left_line.current_fit = np.polyfit(lefty, leftx, 2)
+        #self.right_line.current_fit = np.polyfit(righty, rightx, 2)
 
         # Generate x and y values for plotting
-        ploty = np.linspace(0, binary_warped.shape[0]-1, binary_warped.shape[0] )
-        left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-        right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+        ploty = np.linspace(0, binary_warped.shape[0]-1, binary_warped.shape[0])
+        left_fitx = self.left_line.calc_average_x(ploty)
+        right_fitx = self.right_line.calc_average_x(ploty)
+        radius = self.left_line.calc_radius(np.max(ploty))
 
+        warp_zero = np.zeros_like(binary_warped).astype(np.uint8)
+        color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
+
+        # Warp the blank back to original image space using inverse perspective matrix (Minv)
+        newwarp = cv2.warpPerspective(color_warp, self.invmtx, (img.shape[1], img.shape[0]))
+
+        result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
+
+        '''
         out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
         out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
-        plt.imshow(out_img)
-        plt.plot(left_fitx, ploty, color='yellow')
-        plt.plot(right_fitx, ploty, color='yellow')
+
+        # Generate a polygon to illustrate the search window area
+        # And recast the x and y points into usable format for cv2.fillPoly()
+        left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, ploty]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(
+            np.vstack([left_fitx+margin, ploty])))])
+        left_line_pts = np.hstack((left_line_window1, left_line_window2))
+        right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, ploty]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(
+            np.vstack([right_fitx+margin, ploty])))])
+        right_line_pts = np.hstack((right_line_window1, right_line_window2))
+
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(window_img, np.int_([left_line_pts]), (0, 255, 0))
+        cv2.fillPoly(window_img, np.int_([right_line_pts]), (0, 255, 0))
+        #cv2.putText(window_img, str(radius), (100, 100), cv2.FONT_HERSHEY_COMPLEX, 3, (255, 255, 255))
+        result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
+        '''
+        '''
+        plt.imshow(result)
+        #plt.plot(left_fitx, ploty, color='yellow')
+        #plt.plot(right_fitx, ploty, color='yellow')
         plt.xlim(0, 1280)
         plt.ylim(720, 0)
         plt.show()
-
         '''
-nonzero = binary_warped.nonzero()
-nonzeroy = np.array(nonzero[0])
-nonzerox = np.array(nonzero[1])
-margin = 100
-left_lane_inds = ((nonzerox > (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] - margin)) & (nonzerox < (left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + left_fit[2] + margin))) 
-right_lane_inds = ((nonzerox > (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] - margin)) & (nonzerox < (right_fit[0]*(nonzeroy**2) + right_fit[1]*nonzeroy + right_fit[2] + margin)))  
-
-# Again, extract left and right line pixel positions
-leftx = nonzerox[left_lane_inds]
-lefty = nonzeroy[left_lane_inds] 
-rightx = nonzerox[right_lane_inds]
-righty = nonzeroy[right_lane_inds]
-# Fit a second order polynomial to each
-left_fit = np.polyfit(lefty, leftx, 2)
-right_fit = np.polyfit(righty, rightx, 2)
-# Generate x and y values for plotting
-ploty = np.linspace(0, binary_warped.shape[0]-1, binary_warped.shape[0] )
-left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-
-out_img = np.dstack((binary_warped, binary_warped, binary_warped))*255
-window_img = np.zeros_like(out_img)
-# Color in left and right line pixels
-out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
-out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
-
-# Generate a polygon to illustrate the search window area
-# And recast the x and y points into usable format for cv2.fillPoly()
-left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, ploty]))])
-left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_fitx+margin, ploty])))])
-left_line_pts = np.hstack((left_line_window1, left_line_window2))
-right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, ploty]))])
-right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fitx+margin, ploty])))])
-right_line_pts = np.hstack((right_line_window1, right_line_window2))
-
-# Draw the lane onto the warped blank image
-cv2.fillPoly(window_img, np.int_([left_line_pts]), (0,255, 0))
-cv2.fillPoly(window_img, np.int_([right_line_pts]), (0,255, 0))
-result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
-plt.imshow(result)
-plt.plot(left_fitx, ploty, color='yellow')
-plt.plot(right_fitx, ploty, color='yellow')
-plt.xlim(0, 1280)
-plt.ylim(720, 0)
-'''
-
-'''
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-import glob
-import cv2
-
-# Read in a thresholded image
-warped = mpimg.imread('warped_example.jpg')
-print(warped.shape)
-# window settings
-window_width = 50 
-window_height = 80 # Break image into 9 vertical layers since image height is 720
-margin = 100 # How much to slide left and right for searching
-
-def window_mask(width, height, img_ref, center,level):
-    output = np.zeros_like(img_ref)
-    output[int(img_ref.shape[0]-(level+1)*height):int(img_ref.shape[0]-level*height),max(0,int(center-width/2)):min(int(center+width/2),img_ref.shape[1])] = 1
-    return output
-
-def find_window_centroids(image, window_width, window_height, margin):
-    
-    window_centroids = [] # Store the (left,right) window centroid positions per level
-    window = np.ones(window_width) # Create our window template that we will use for convolutions
-    
-    # First find the two starting positions for the left and right lane by using np.sum to get the vertical image slice
-    # and then np.convolve the vertical image slice with the window template 
-    
-    # Sum quarter bottom of image to get slice, could use a different ratio
-    l_sum = np.sum(warped[int(3*warped.shape[0]/4):,:int(warped.shape[1]/2)], axis=0)
-    l_center = np.argmax(np.convolve(window,l_sum))-window_width/2
-    r_sum = np.sum(warped[int(3*warped.shape[0]/4):,int(warped.shape[1]/2):], axis=0)
-    r_center = np.argmax(np.convolve(window,r_sum))-window_width/2+int(warped.shape[1]/2)
-    
-    # Add what we found for the first layer
-    window_centroids.append((l_center,r_center))
-    
-    # Go through each layer looking for max pixel locations
-    for level in range(1,(int)(warped.shape[0]/window_height)):
-	    # convolve the window into the vertical slice of the image
-	    image_layer = np.sum(warped[int(warped.shape[0]-(level+1)*window_height):int(warped.shape[0]-level*window_height),:], axis=0)
-	    conv_signal = np.convolve(window, image_layer)
-	    # Find the best left centroid by using past left center as a reference
-	    # Use window_width/2 as offset because convolution signal reference is at right side of window, not center of window
-	    offset = window_width/2
-	    l_min_index = int(max(l_center+offset-margin,0))
-	    l_max_index = int(min(l_center+offset+margin,warped.shape[1]))
-	    l_center = np.argmax(conv_signal[l_min_index:l_max_index])+l_min_index-offset
-	    # Find the best right centroid by using past right center as a reference
-	    r_min_index = int(max(r_center+offset-margin,0))
-	    r_max_index = int(min(r_center+offset+margin,warped.shape[1]))
-	    r_center = np.argmax(conv_signal[r_min_index:r_max_index])+r_min_index-offset
-	    # Add what we found for that layer
-	    window_centroids.append((l_center,r_center))
-
-    return window_centroids
-
-window_centroids = find_window_centroids(warped, window_width, window_height, margin)
-print(window_centroids)
-# If we found any window centers
-if len(window_centroids) > 0:
-
-    # Points used to draw all the left and right windows
-    l_points = np.zeros_like(warped)
-    r_points = np.zeros_like(warped)
-
-    # Go through each level and draw the windows 	
-    for level in range(0,len(window_centroids)):
-        # Window_mask is a function to draw window areas
-	    l_mask = window_mask(window_width,window_height,warped,window_centroids[level][0],level)
-	    r_mask = window_mask(window_width,window_height,warped,window_centroids[level][1],level)
-	    # Add graphic points from window mask here to total pixels found 
-	    l_points[(l_points == 255) | ((l_mask == 1) ) ] = 255
-	    r_points[(r_points == 255) | ((r_mask == 1) ) ] = 255
-
-    # Draw the results
-    template = np.array(r_points+l_points,np.uint8) # add both left and right window pixels together
-    zero_channel = np.zeros_like(template) # create a zero color channle 
-    template = np.array(cv2.merge((zero_channel,template,zero_channel)),np.uint8) # make window pixels green
-    warpage = np.array(cv2.merge((warped,warped,warped)),np.uint8) # making the original road pixels 3 color channels
-    output = cv2.addWeighted(warpage, 1, template, 0.5, 0.0) # overlay the orignal road image with window results
- 
-# If no window centers found, just display orginal road image
-else:
-    output = np.array(cv2.merge((warped,warped,warped)),np.uint8)
-
-# Display the final results
-plt.imshow(output)
-#plt.imshow(warped)
-plt.title('window fitting results')
-plt.show()
-'''
+        return result
 
 def main():
     opts, _ = getopt.getopt(sys.argv[1:], 'fp', [])
@@ -726,50 +660,31 @@ def main():
         if opt == '-p':
             plot = True
 
-    processor = ImageProcessor('../data', '../camera_cal', '../test_images', '../output_images')
-    if force is True:
-        processor.calibrate()
-        processor.undistort()
-
-    processor.process_test_imgs(plot=plot)
-    '''
-    camera_data_file = '../data/camera.p'
-    if force or not os.path.exists('../data/camera.p'):
-        logger.debug('starts camera calibration')
-
-        _, mtx, dist, _, _ = calibrate('../camera_cal/',
-                                       camera_data_file,
-                                       (9, 6))
-
-    else:
-        logger.debug('loads camera calibration data')
-
-        with open(camera_data_file, mode='rb') as f:
-            camera_data = pickle.load(f)
-            mtx = camera_data['cameraMatrix']
-            dist = camera_data['distCoeffs']
-
+    detector = LineDetector('../data',
+                            '../camera_cal',
+                            '../test_images',
+                            '../output_images')
     if force:
-        logger.debug('undistorts calibration images')
-        undistort('../camera_cal/', '../output_images', mtx, dist)
+        detector.calibrate()
+        detector.undistort()
 
-    logger.debug('run image pipeline')
-    path = '../test_images/*.jpg'
-    for name in glob.glob(path):
-        print(name)
-        img = mpimg.imread(name)
-        processed = pipeline(img)
-        out_name = '../output_images/' + os.path.basename(name)
-        cv2.imwrite(out_name, processed)
+    if plot:
+        detector.process_test_imgs()
 
-        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
-        f.tight_layout()
-        ax1.imshow(img)
-        ax1.set_title('Original Image', fontsize=50)
-        ax2.imshow(processed)
-        ax2.set_title('Undistorted Image', fontsize=50)
-        plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
-        plt.show()
-'''
+    ## for a image
+    #detector.find_line(mpimg.imread('../test_images/test3.jpg'))
+
+    ## for a video
+    clip = VideoFileClip('../project_video.mp4')
+    output = '../output_images/project_video.mp4'
+
+    #clip = VideoFileClip('../challenge_video.mp4')
+    #output = '../output_images/challenge_video.mp4'
+
+    #clip = VideoFileClip('../harder_challenge_video.mp4')
+    #output = '../output_images/harder_challenge_video.mp4'
+
+    clip.fl_image(detector.find_line).write_videofile(output, audio=False)
+
 if __name__ == '__main__':
     main()
