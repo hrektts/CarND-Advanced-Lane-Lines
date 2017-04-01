@@ -19,7 +19,8 @@ The goals / steps of this project are the following:
 [image4]: ./output_images/test1_binary.jpg "Binary Example"
 [image5]: ./output_images/test1_src.jpg "Source points"
 [image6]: ./output_images/test1_dst.jpg "Destination points"
-[image7]: ./examples/example_output.jpg "Output"
+[image7]: ./output_images/test1_lined.jpg "Identified line"
+[image8]: ./output_images/test1_result.jpg "Result"
 [video1]: ./project_video.mp4 "Video"
 
 
@@ -80,7 +81,7 @@ I verified that my perspective transform was working as expected by drawing the 
 
 Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
 
-![alt text][image5]
+![alt text][image7]
 
 ### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
@@ -90,7 +91,7 @@ I did this in lines # through # in my code in `my_other_file.py`
 
 I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
 
-![alt text][image6]
+![alt text][image8]
 
 ---
 
