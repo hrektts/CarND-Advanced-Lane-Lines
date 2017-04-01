@@ -94,10 +94,7 @@ Then I fit my lane lines with a 2nd order polynomial using all the points detect
 
 ![alt text][image9]
 
-Next, I calculated the radius of curvature of the lins. I used Bourne's method as descrived in his website " 
-Interactive Mathematics"[[1](#bourne)]. I did this in [lines 598 through 600](./src/find_lane.py#L598-L600) and [lines 411 through 416](./src/find_lane.py#L411-L416) in my code in `find_lane.py`
-
-### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
+Next, I calculated the radius of curvature of the lins. I used Bourne's method as descrived in his website "Interactive Mathematics"[[1](#bourne)]. I did this in [lines 598 through 600](./src/find_lane.py#L598-L600) and [lines 411 through 416](./src/find_lane.py#L411-L416) in my code in `find_lane.py`
 
 Finally, I plotted back down onto the road such that the lane area is identified clearly. I implemented this step in [lines 632 through 653](./src/find_lane.py#L632-L653) in my code in `find_lane.py`.  Here is an example of my result on a test image:
 
@@ -107,19 +104,13 @@ Finally, I plotted back down onto the road such that the lane area is identified
 
 ## Pipeline (video)
 
-####1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
-
 Here's a [link to my video result on YouTube](https://youtu.be/WROS2aRtOn4).
 
 ---
 
 ## Discussion
 
-### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.
-
-I started this project from my baseline where I implemented the mechanism provided in the class material. It worked almost fine however it sometime lost yellow line at where the load was rough, and the line detection was not stable so that the detected line moved around frame by frame. To improve these situation, I applied a method per each. 
+I started this project from my baseline where I implemented the mechanism provided in the class material. It worked almost fine however it sometime lost yellow line at where the load was rough, and the line detection was not stable so that the detected line moved around frame by frame. To improve these situation, I applied a method per each.
 
 For the first problem, I added threshold of hue channel of the image to detect yellow color. This worked fine and yellow line could be find stably.
 
