@@ -462,7 +462,7 @@ class LineDetector(ImageProcessor):
     def process_test_imgs(self, cal_data_file='camera.p', ext='jpg'):
         """ TODO: Add docstring
         """
-        #super(LineDetector, self).process_test_imgs(cal_data_file, ext)
+        super(LineDetector, self).process_test_imgs(cal_data_file, ext)
 
         failed = self.check_calibration(cal_data_file)
 
@@ -642,14 +642,30 @@ class LineDetector(ImageProcessor):
         # Warp the blank back to original image space using inverse perspective matrix
         newwarp = cv2.warpPerspective(color_warp, self.invmtx, (img.shape[1], img.shape[0]))
 
+        # Calculate vhecle offset
+        vehicle_offset = np.mean([right_fitx[-1], left_fitx[-1]]) \
+                         - binary_warped.shape[1]/2
+        vehicle_offset = vehicle_offset * self.xm_per_pix
+        if vehicle_offset < 0:
+            offset_direction = 'right'
+            vehicle_offset = np.absolute(vehicle_offset)
+        else:
+            offset_direction = 'left'
+
         result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
         font = cv2.FONT_HERSHEY_DUPLEX
-        cv2.putText(result, 'Radius of the left line: %9.2f m'
-                    % self.left_line.radius_of_curvature,
-                    (30, 50), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(result, 'Radius of the right line: %8.2f m'
-                    % self.right_line.radius_of_curvature,
-                    (30, 80), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(
+            result,
+            'Radius of the left line: {0:9.2f} m'.format(self.left_line.radius_of_curvature),
+            (30, 50), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(
+            result,
+            'Radius of the right line: {0:8.2f} m'.format(self.right_line.radius_of_curvature),
+            (30, 80), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(
+            result,
+            'Vehicle is {0:.2f} m {1} of center'.format(vehicle_offset, offset_direction),
+            (30, 110), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
         if test:
             return result, lined

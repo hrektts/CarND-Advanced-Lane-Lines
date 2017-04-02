@@ -94,9 +94,11 @@ Then I fit my lane lines with a 2nd order polynomial using all the points detect
 
 ![alt text][image9]
 
-Next, I calculated the radius of curvature of the lins.  I used Bourne's method as descrived in his website "Interactive Mathematics"[[1](#bourne)].  I did this in [lines 598 through 600](./src/find_lane.py#L598-L600) and [lines 411 through 416](./src/find_lane.py#L411-L416) in my code in `find_lane.py`.
+Next, I calculated the radius of curvature of the lins.  I used Bourne's method as descrived in his website "Interactive Mathematics"[[1](#bourne)].  I did this in [lines 597 through 599](./src/find_lane.py#L597-L599) and [lines 411 through 416](./src/find_lane.py#L411-L416) in `find_lane.py`.
 
-Finally, I plotted back down onto the road such that the lane area is identified clearly.  I implemented this step in [lines 632 through 653](./src/find_lane.py#L632-L653) in my code in `find_lane.py`.  Here is an example of my result on a test image:
+Then, I calculated vehicle's offset from the center of the lane.  I assumed that the camera is mounted on the center of the vehicle, so that the center of the image can be considered as the center of the vehicle.  I did this in [lines 645 through 653](./src/find_lane.py#L645-L653) in `find_lane.py`.
+
+Finally, I plotted back down onto the road such that the lane area is identified clearly.  I implemented this step in [lines 631 through 643](./src/find_lane.py#L631-L643) in `find_lane.py`.  Here is an example of my result on a test image:
 
 ![alt text][image10]
 
@@ -104,7 +106,7 @@ Finally, I plotted back down onto the road such that the lane area is identified
 
 ## Pipeline (video)
 
-Here's a [link to my video result on YouTube](https://youtu.be/WROS2aRtOn4).
+Here's a [link](https://youtu.be/WtCxUx6HwNk) to my video result on YouTube.
 
 ---
 
